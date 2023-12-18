@@ -1,0 +1,67 @@
+---
+title: "R Temel Veri Türleri"
+format: html
+editor: visual
+---
+
+## Temel R Veri Türleri
+
+-   **Vektörler :** c( ) fonksiyonu ile oluşturulur.
+
+```{r}
+my_vector<-c(1,2,3,4,5)
+my_vector
+```
+
+-   **Matrisler :** matrix() fonksiyonu ile oluşturulur.
+
+    ```{r}
+    my_matrix=matrix(c(1,2,3,4,5,6),nrow=2,ncol=3)
+    my_matrix
+    ```
+
+    **Fonksiyonlar**
+
+-   **print(), sum(), mean()**
+
+    ```{r}
+    print(my_vector)
+    ortalama<-mean(my_vector)
+    print(ortalama)
+    ```
+
+**If Else Koşulları**
+
+```{r}
+x<-10 
+if(x>5){print("x büyüktür 5")
+} else {print("x küçük vea eşittir 5")
+  }
+```
+
+**For Döngüsü Örneği**
+
+```{r}
+for (i in 1:5) {
+  print(i)
+}
+```
+
+# Dosyalarla Çalışmak
+
+```{r}
+library(readr)
+library(tidyverse)
+% Paket bulunamadı hatası alırsanız:
+%  install.packages("readr")
+data<-read.csv(file.choose(),header = FALSE,encoding = "UTF-8")
+head(airline)
+```
+
+**Ay-Gün-Yıl Ayırma**
+
+Airline verisetince ay-gün-yıl şeklinde bulunan verileri 3 sütuna ayırmak istiyoruz.
+
+```{r}
+ayrik_data<-airline%>%separate(Date,sep="-",into=c("year","month","day"))
+```
