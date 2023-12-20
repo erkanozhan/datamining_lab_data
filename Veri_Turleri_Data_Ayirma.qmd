@@ -4,7 +4,7 @@ format: html
 editor: visual
 ---
 
-## Temel R Veri Türleri
+## 1. Temel R Veri Türleri
 
 -   **Vektörler :** c( ) fonksiyonu ile oluşturulur.
 
@@ -15,12 +15,22 @@ my_vector
 
 -   **Matrisler :** matrix() fonksiyonu ile oluşturulur.
 
+```{r}
+my_matrix=matrix(c(1,2,3,4,5,6),nrow=2,ncol=3)
+my_matrix
+```
+
+-   **Logical**
+
+    Örnek:
+
     ```{r}
-    my_matrix=matrix(c(1,2,3,4,5,6),nrow=2,ncol=3)
-    my_matrix
+    x<-"April"
     ```
 
-    **Fonksiyonlar**
+-   **Character**
+
+**Temel Fonksiyonlar**
 
 -   **print(), sum(), mean()**
 
