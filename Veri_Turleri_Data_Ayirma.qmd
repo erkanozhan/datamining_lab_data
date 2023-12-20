@@ -47,13 +47,13 @@ for (i in 1:5) {
 }
 ```
 
-# Dosyalarla Çalışmak
+## Dosyalarla Çalışmak
 
 ```{r}
 library(readr)
 library(tidyverse)
-% Paket bulunamadı hatası alırsanız:
-%  install.packages("readr")
+# Paket bulunamadı hatası alırsanız:
+# install.packages("readr")
 data<-read.csv(file.choose(),header = FALSE,encoding = "UTF-8")
 head(airline)
 ```
