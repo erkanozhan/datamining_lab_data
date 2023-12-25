@@ -1,0 +1,162 @@
+---
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+## 1. Giriş İşlemleri
+
+Aykırı değer, veri içerisinde doğru, uygun, geçerli, gerçek olmayan verilerdir. Aykırılık genellikle normal dağılımdan sivrilen olarakta düşünülebilir.
+
+```{r}
+Sys.setlocale("LC_CTYPE", "turkish")
+rm(list = ls())
+str(data, list.len=ncol(data))
+```
+
+## 2. Gerekli Paketlerin Yüklenmesi
+
+```{r}
+# install.packages("summarytools")
+# install.packages("car")
+# install.packages("outForest")
+# install.packages("sass")
+# install.packages("outliers")
+# install.packages("Amelia")
+library(summarytools)
+library(car)
+library(outForest)
+library(dplyr)
+library(xlsx)
+library(readxl)
+library(stringr)
+library(kableExtra)
+library(outliers)
+library(Amelia)
+library(tidyverse)
+library(janitor)
+library(purrr)
+library(RJSONIO)
+library(RWeka)
+```
+
+------------------------------------------------------------------------
+
+Örnek ile gösterim
+
+## 2. Verinin Yüklenmesi
+
+Hazır veri kümelerinden veya bir Excel dosyasından veri almak için aşağıdaki kodları kullanabilirsiniz. R .csv, .arff vb. birçok dosya türünü açabilecek geniş bir paket havuzuna sahiptir.
+
+```{r}
+a<-as.data.frame(iris)
+data<-read_excel(file.choose(),col_names =T)
+```
+
+## 3. Veri Özet Bilgileri
+
+```{r}
+summarytools::view(dfSummary(a,max.string.width = 45))
+# Ek parametreler için https://rdrr.io/cran/summarytools/man/dfSummary.html
+# boxplot(Petal.Width~Species,data=a,Main="Petal")
+# car::outlierTest(lm(a))
+# a$Sepal.Length[25]<-8.5
+# 
+# outlier(a$Sepal.Width)%>%kable()
+# 
+# libraroutliers(outForest(a))
+# outliers(outForest(a,Sepal.Width~Species))
+# outliers(outForest(a))
+# summary(a)
+```
+
+## 4. Aykırı Değer Bulma
+
+Örnek bir aykırılık oluşturalım;
+
+```{r}
+# Aykırı bir değer gönderelim
+a$Sepal.Width[39]<-120
+# NA bir değer gömelim
+a$Sepal.Width[15]<-NA
+# a$Petal.Width[48]<-as.numeric("q10")
+# a$Petal.Width[49]<-c("10o")
+# a$Petal.Length[49]<-10
+```
+
+### 4.1 Box Plot Yöntemi
+
+Bu yöntemde box plot grafiğine bakılır. Grafiğe göre bıyık alanı olarak tabir edilen alanın dışında kalan veriler aykırı verilerdir.
+
+```{r}
+boxplot(Sepal.Length~Species,data=a,Main="Petal") # Belirli bir sütundaki aykırılık için tek tek bakılabilir.
+
+```
+
+### 4.2 OutlierTest Aracı ile Tespit
+
+```{r}
+car::outlierTest(lm(a))
+```
+
+### 4.3 OutForest Aracı ile Test
+
+```{r}
+outliers(outForest(a))
+# Çıktının daha hizalı çıkması için aşağıdaki kodu kullandık
+c<-outForest(a) 
+outliers(c)
+
+# Belirli bir hücreye uygulamak istersek
+d<-outForest(a,Petal.Width~Species)
+outliers(d)
+
+```
+
+## 5. Boş Olan Hücreleri Kontrol Etmek
+
+Yöntem-1
+
+```{r}
+which(is.na(a)) 
+sapply(a, function(a) sum(is.na(a)))
+```
+
+Boş olan hücreleri görmek için görsel bir yaklaşım;
+
+```{r}
+missmap(a)
+```
+
+Boş olan hücrelerin içini belirli bir değerle doldurmak için;
+
+```{r}
+library(dplyr)
+# Örnek veri yapalım
+df <- data.frame(team = c('T1', 'T1', 'T1', 'T2', 'T2', 'T2', 'T2'),
+                 position = c('R1', NA, 'R1', 'R1', 'R1', 'R1', 'R2'),
+                 points = c(122, 135, 129, NA, 334, 434, 139))
+# Tüm Eksik-NA leri bir değer ile doldurmak içim
+df <- df %>% replace(is.na(.), 0)
+  # Başka bir çözüm
+ df[df%>%is.na()]<-0
+
+ # Sadece belirli bir kolondaki eksik-NA değerleri doldurmak için
+df %>% mutate(position = ifelse(is.na(position), 0, position))
+ # Belirli bir değeri NA'e dönüştürmek için
+df[df==0]<-NA
+
+
+```
+
+## 6. Tekrar Eden Satırları- Verileri Görme
+
+Summary komutunu kullanarak elde ettiğimiz HTML özet bilgisinin en üstünde tekrarlı satır sayısı bilgisi vardır. Ancak bu sadece bilgi verir. Hangi bilgilerin tekrar ettiğini görmek, tekrar eden bilgileri çıkararak temiz veri seti elde etmek için aşağıdaki kodlar kullanılabilir.
+
+```{r}
+a[duplicated(a),] # Tekrar eden değerler gösterilir
+tekrarsiz<-a[!duplicated(a),] # Tekrar eden değerlerden arındırılımış veri elde ediliyor.
+```
