@@ -1,0 +1,421 @@
+---
+editor_options: 
+  chunk_output_type: console
+---
+
+## 1. Gerekli Paketlerin Yüklenmesi ve Bağlanması
+
+```{r}
+library(xlsx)
+library(NbClust)
+library(haven)# SAV dosyasını R içine almak için
+library(cluster)
+library(factoextra)
+library(mclust)
+library(tidyverse)
+library(magrittr)
+library(cluster.datasets)
+library(cowplot)
+library(clValid)
+library(ggfortify)
+library(clustree)
+library(dendextend)
+library(FactoMineR)
+library(corrplot)
+library(GGally)
+library(ggiraphExtra)
+library(knitr)
+library(kableExtra)
+library(ggExtra)
+library(openxlsx)
+library(summarytools)
+library(corrplot)
+library(clustree)
+```
+
+## 2. Verinin Yüklenmesi-Alınması
+
+```{r}
+data<-read_sav(file.choose())
+ data$yas<-NULL
+ data$cinsiyet<-NULL
+ data$egitim<-NULL
+ data$ailegeliri<-NULL
+ # write.xlsx(data,file.choose(),col.names = TRUE)  
+ data_mam_raw<- as_tibble(data)
+ data_mam<-data_mam_raw
+ data_brandRep<-data_mam[,1:5]
+ data_premPri<-data_mam[,6:9]
+ #write.xlsx(as.data.frame(data_brandRep),file.choose(),col.names = TRUE,row.names = FALSE) 
+
+```
+
+## 3. Dönüşüm Noktası
+
+```{r}
+  # Bu veride kümelenecek iki veri dizisi var bu nedenle her biri için en başta farklı yüklemeler yapmak gerekiyor. data_mam değişmiyor
+  # ancak içine giren veri değişiyor.
+  # data_mam<-data_brandRep
+  data_mam<-data_premPri
+  # data_mam<-as_tibble(iris)
+```
+
+## 4. Verileri görselleştirme
+
+```{r}
+glimpse(data_mam)
+summary(data_mam) %>% kable() %>% kable_styling()
+data_mam %>% gather(Attributes, value, 1:4)%>% ggplot(aes(x=value)) +
+        geom_histogram(fill = "lightblue2", color = "black") + 
+    facet_wrap(~Attributes, scales = "free_x") +
+    labs(x = "Value", y = "Frequency")
+```
+
+## 5. Korelasyon bilgisi
+
+```{r}
+corrplot(cor(data_mam), type = "upper", method = "ellipse", tl.cex = 0.9)
+```
+
+## 6. Varyans bilgisi
+
+```{r}
+res.pca <- PCA(data_mam,  graph = FALSE)
+# Visualize eigenvalues/variances
+fviz_screeplot(res.pca, addlabels = TRUE, ylim = c(0, 55))
+
+```
+
+Yukarıdaki grafiğe bakacak olursak X ekseninin her bir değişkeni ve onun açıklama oranını gösteriyor.
+
+```{r}
+# PCA Grafiği
+fviz_pca_var(res.pca, col.var="contrib",
+              gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+              repel = TRUE # Avoid text overlapping
+ ) + theme_minimal() + ggtitle("Variables - PCA")
+
+```
+
+[Detaylı Bilgi ve Yorum için incelemek lazım](https://www.r-bloggers.com/2019/01/10-tips-for-choosing-the-optimal-number-of-clusters/%20yorum%20için "Detay")
+
+## 7. Optimal Küme Sayısının Belirlenmesi
+
+Literatürde kümelenme sonuçlarının değerlendirilmesi için çeşitli ölçekler önerilmiştir. Kümeleme doğrulama terimi, bir kümeleme algoritmasının sonuçlarını değerlendirme sürecini tasarlamak için kullanılır. En uygun küme sayısını belirlemek için otuzdan fazla endeks ve yöntem var, bu yüzden sadece çok düzgün bir clustree paketi de dahil olmak üzere birkaçına bakalım.
+
+### 7.1 Elbow Methodu
+
+Muhtemelen en iyi bilinen yöntem olan dirsek yöntemi, her küme sayısındaki karelerin toplamının hesaplanıp grafiklendirilir ve kullanıcı en uygun küme sayısını belirlemek için dikten sığa (dirsek) eğim değişikliği arar. Bu yöntem kesin değildir, ancak yine de yararlı olabilir.
+
+```{r}
+plot1<-fviz_nbclust(data_mam, kmeans, method = "wss", k.max = 6) + theme_minimal() + 
+  ggtitle("Willingness to pay price premium clustering with the elbow method")+
+  geom_vline(xintercept = 2, linetype = 3)+
+  theme(axis.text.x = element_text(size = 12),axis.title = element_text(size = 12),plot.title = element_text(hjust = 0.5))
+plot1
+```
+
+Dirsek eğrisi yöntemi yararlıdır, çünkü kümelerin sayısının artmasının, kümelerin marjinal bir şekilde değil, anlamlı bir şekilde ayrılmasına nasıl katkıda bulunduğunu gösterir. Bükülme, üçüncü kümenin ötesindeki ek kümelerin çok az değere sahip olduğunu gösterir. (Bu yöntemin daha matematiksel olarak titiz bir yorumu ve uygulanması için [[buraya](http://web.stanford.edu/~hastie/Papers/gap.pdf)] bakınız).
+
+### 7.2 The Gap Statistic
+
+Boşluk istatistiği, farklı k değerleri için küme içi varyasyon içindeki toplamı, verilerin boş referans dağılımı altında beklenen değerleriyle karşılaştırır. En uygun kümelerin tahmini, boşluk istatistiğini en üst düzeye çıkaran değer olacaktır (yani, en büyük boşluk istatistiğini verir). Bu, kümeleme yapısının noktaların rastgele tekdüze dağılımından uzak olduğu anlamına gelir.
+
+```{r}
+gap_stat <- clusGap(data_mam, FUN = kmeans, nstart = 30, K.max = 24, B = 50)
+fviz_gap_stat(gap_stat) + theme_minimal() + ggtitle("fviz_gap_stat: Gap Statistic")+
+  theme(axis.text.x = element_text(size = 12),axis.title = element_text(size = 12))
+```
+
+GAP istatistikleri grafiği, istatistikleri dikey segmentlerle çizilen standart hatalarla kümelerin (k) sayısına ve dikey kesikli mavi çizgi ile işaretlenmiş en uygun k değerine göre gösterir. Bu gözleme göre K = 3, verilerdeki en uygun küme sayısıdır.
+
+### 7.3The Silhouette Method
+
+En uygun küme sayısını belirlemeye yardımcı olabilecek başka bir görselleştirme esaslı yöntem siluet yöntemidir. Ortalama siluet yöntemi, k'nin farklı değerleri için gözlemlerin ortalama siluetini hesaplar. K için olası değerler aralığında ortalama silueti en üst düzeye çıkaran en uygun küme sayısı k'dir.
+
+```{r}
+fviz_nbclust(data_mam, kmeans, method = "silhouette", k.max = 24) + theme_minimal() + ggtitle("The Silhouette Plot")
+
+```
+
+Bu aynı zamanda en uygun 2 kümeyi önerir.
+
+### 7.4 The Sum of Squares Method - Karelerin Toplamı Yöntemi
+
+Başka bir kümeleme doğrulama yöntemi, karelerin küme içindeki toplamını (her kümenin ne kadar sıkı olduğunun bir ölçüsü) en aza indirerek ve karelerin kümeler arası toplamını en üst düzeye çıkararak (her kümenin diğerlerinden ne kadar ayrıldığının bir ölçüsü) en uygun küme sayısını seçmek olacaktır.
+
+```{r}
+ssc <- data.frame(
+  kmeans = c(2,3,4,5,6,7,8),
+  within_ss = c(mean(km2$withinss), mean(km3$withinss), mean(km4$withinss), mean(km5$withinss), mean(km6$withinss), mean(km7$withinss), mean(km8$withinss)),
+  between_ss = c(km2$betweenss, km3$betweenss, km4$betweenss, km5$betweenss, km6$betweenss, km7$betweenss, km8$betweenss)
+)
+ssc %<>% gather(., key = "measurement", value = value, -kmeans)
+#ssc$value <- log10(ssc$value)
+ssc %>% ggplot(., aes(x=kmeans, y=log10(value), fill = measurement)) + geom_bar(stat = "identity", position = "dodge") + ggtitle("Cluster Model Comparison") + xlab("Number of Clusters") + ylab("Log10 Total Sum of Squares") + scale_x_discrete(name = "Number of Clusters", limits = c("0", "2", "3", "4", "5", "6", "7", "8"))
+
+```
+
+Not: Iris veri seti için
+
+ssc \<- data.frame(
+
+kmeans = c(2,3,4),
+
+within_ss = c(mean(data_mam\$Sepal.Length), mean(data_mam\$Sepal.Width), mean(data_mam\$Petal.Length), mean(data_mam\$Petal.Width)),
+
+between_ss = c(data_mam\$Sepal.Length, data_mam\$Sepal.Width, data_mam\$Petal.Length, data_mam\$Petal.Width)
+
+)
+
+### 7.5 NbClust Yaklaşımı
+
+NbClust paketi, ilgili küme sayısını belirlemek için 30 dizin sağlar ve kullanıcılara küme sayısı, mesafe ölçüleri ve kümeleme yöntemlerinin tüm birleşimlerini değiştirerek elde edilen farklı sonuçlardan en iyi kümeleme düzenini önerir.
+
+```{r}
+res.nbclust <- NbClust(data_mam, distance = "euclidean",
+                  min.nc = 2, max.nc = 5, 
+                  method = "kmeans", index ="all")
+#method="kmeans-ward.D2 vb." detay:https://search.r-project.org/CRAN/refmans/NbClust/html/NbClust.html 
+res.nbclust$Best.nc%>% kable() %>% kable_styling()
+# Kümelenmiş verileri etiketlemek için aşağıdaki kod.
+data_mam$kume<-res.nbclust$Best.partition
+
+res.nbclust$All.CriticalValues%>% kable() %>% kable_styling()
+plot2<-factoextra::fviz_nbclust(res.nbclust) + theme_minimal() + ggtitle("NbClust's optimal number of clusters for\n Willingness to pay price premium")+theme(axis.text.x = element_text(size = 12),axis.title = element_text(size = 12),plot.title = element_text(hjust = 0.5))
+plot2
+```
+
+Bu figüre göre, en uygun küme sayısının 3-4... olduğu görülmektedir.
+
+## Plot Birleştirme
+
+```{r}
+library(showtext)
+showtext_auto()
+dev.new(width =16, height = 20, unit = "cm",dpi=300,fontfamily="Turkish Times New Roman",res=300)
+
+a<-plot_grid(plot1, plot2, align = "h", nrow = 1,ncol = 2, rel_heights = c(1/2,1/2),rel_widths = c(1/2,1/2))
+a
+
+ggsave(file = file.choose(),  unit = "cm", width = NA, height = NA, device='pdf', family="serif", dpi=300,pointsize = 10)
+
+```
+
+### 7.6 Clustree
+
+Yukarıdaki istatistiksel yöntem, bir seferde yalnızca tek bir kümeyi dikkate alan tek bir puan üretir. Clustree r paketi, kümelerin sayısı arttıkça örneklerin gruplamaları nasıl değiştirdiğini göz önünde bulundurarak alternatif bir yaklaşım benimser. Bu, hangi kümelerin farklı olduğunu ve hangilerinin kararsız olduğunu göstermek için kullanışlıdır. En uygun kümelerin hangi seçim olduğunu açıkça söylemez, ancak olası seçenekleri keşfetmek için yararlıdır.
+
+1 ila 11 kümeye bir göz atalım.
+
+```{r}
+tmp <- NULL
+for (k in 1:5){
+  tmp[k] <- kmeans(data_mam, k, nstart =1)
+}
+
+df <- data.frame(tmp)
+# add a prefix to the column names
+colnames(df) <- seq(1:5)
+colnames(df) <- paste0("k",colnames(df))
+# get individual PCA
+df.pca <- prcomp(df, center = TRUE, scale. = FALSE)
+ind.coord <- df.pca$x
+ind.coord <- ind.coord[,1:2]
+df <- bind_cols(as.data.frame(df), as.data.frame(ind.coord))
+clustree(df, prefix = "k")
+
+```
+
+Bu şekilde, her düğümün boyutu her kümedeki örnek sayısına karşılık gelir ve oklar her kümenin aldığı örnek sayısına göre renklendirilir. Gelen düğüm oranı olarak adlandırılan saydam oklar da renklendirilir ve bir gruptan alınan örneklerin küme kararsızlığının bir göstergesi olarak başka bir gruba nasıl geldiğini gösterir.
+
+![](ornek "Açıklama için örnek"){width="650"}
+
+Bu grafikte, k=2'den k=3'e geçerken, bakan sol kümeden bir dizi türün sağdaki üçüncü kümeye yeniden atandığını görüyoruz. k=8'den k=9'a geçerken, birden fazla gelen kenarı olan bir düğüm görüyoruz, verileri aşırı kümelediğimiz bir gösterge.
+
+Bu boyutu, verilerdeki diğer boyutların, özellikle de boyut azaltma tekniklerinden gelenlerin üzerine yerleştirmek de yararlı olabilir. Bunu clustree_overlay () işlevini kullanarak yapabiliriz:
+
+```{r}
+df_subset <- df %>% select(1:5,12:13)
+clustree_overlay(df_subset, prefix = "k", x_value = "PC1", y_value = "PC2")
+```
+
+Çözünürlük boyutuna karşı x veya y boyutlarından birini göstererek yandan görmeyi tercih ederim.
+
+```{r}
+overlay_list <- clustree_overlay(df_subset, prefix = "k", x_value = "PC1",
+                                 y_value = "PC2", plot_sides = TRUE)
+overlay_list$x_side
+overlay_list$y_side
+```
+
+### 7.6 Choosing the appropriate algorithm
+
+Uygun kümeleme algoritmasının seçimi ne olacak? CValid paketi, en iyi kümeleme yaklaşımını ve en uygun küme sayısını belirlemek için birden fazla kümeleme algoritmasını aynı anda karşılaştırmak için kullanılabilir. K-means, hiyerarşik ve PAM kümelemesini karşılaştıracağız.
+
+```{r}
+data_mam_scaled<-scale(data_mam)
+intern <- clValid(data_mam_scaled, nClust = 2:24, 
+              clMethods = c("hierarchical","kmeans","pam","agnes","sota"), validation = "internal")
+# Summary
+summary(intern) %>% kable() %>% kable_styling()
+
+```
+
+Bağlantı ve siluet her ikisi de bağlanabilirlik ölçümleridir, Dunn Endeksi ise aynı kümede olmayan gözlemler arasındaki en küçük mesafenin en büyük küme içi mesafeye oranıdır.
+
+## Extracting Features of Clusters
+
+"Bu kümeyi diğerlerinden farklı kılan nedir?" ve "birbirine benzeyen kümeler nelerdir" gibi sorulara yanıt vermek istiyoruz.
+
+Daha önce belirtildiği gibi, kümelemeden elde edilen sonuçların kalitesini değerlendirmek zordur. Gerçek etiketlerimiz olmadığından, kümeleme, bu kümeler arasındaki farkları daha ayrıntılı olarak keşfetmek için iyi bir EDA başlangıç noktasıdır. Beş küme seçelim ve bu kümelerin özelliklerini inceleyelim.
+
+```{r}
+# Compute dissimilarity matrix with euclidean distances
+d <- dist(data_mam, method = "euclidean")
+# Hierarchical clustering using Ward's method
+res.hc <- hclust(d, method = "ward.D2" )
+# Cut tree into 5 groups
+grp <- cutree(res.hc, k = 2)
+# Visualize
+plot(res.hc, cex = 0.6) # plot tree
+rect.hclust(res.hc, k = 2, border = 1:2) # add rectangle
+
+# Execution of k-means with k=5
+final <- kmeans(data_mam, 2, nstart = 30)
+fviz_cluster(final, data = data_mam) + theme_minimal() + ggtitle("k = 2")
+
+```
+
+Kümeleri ayıklayalım ve küme düzeyinde bazı tanımlayıcı istatistikler yapmak için bunları ilk verilerimize geri ekleyelim:
+
+```{r}
+as.data.frame(data_mam) %>% mutate(Cluster = final$cluster) %>% group_by(Cluster) %>% summarise_all("mean") %>% kable() %>% kable_styling()
+```
+
+Sadece ... oluşan 2. kümenin yüksek ... içeriğine sahip olduğunu görüyoruz. Fok ve yunustan oluşan Grup 3, yağ bakımından yüksektir; bu, böylesine soğuk bir iklimin zorlu talepleri göz önüne alındığında mantıklıdır; grup 4, büyük laktoz içeriğine sahiptir.
+
+## Oluşan Kümelenmiş Tabloyu-Küme İsimleri ile Almak İçin
+
+dfSummary veri dağılımını görmek için harika bir araç. Birçok bilgiye rahatlıkla ulaşabiliyorsunuz. Diğer özetleme araçları için aşağıdaki web sitesi incelenebilir.
+
+<https://dabblingwithdata.wordpress.com/2018/01/02/my-favourite-r-package-for-summarising-data/>
+
+```{r}
+transfer<-as.data.frame(data_mam) %>% mutate(Cluster = final$cluster)
+write.xlsx(as.data.frame(transfer),file.choose(),col.names = TRUE,row.names = FALSE)
+dfSummary(transfer)
+# Yine NbClust başlığı altında aşağıdaki kod ile alınabiliyor
+data_mam$kume<-res.nbclust$Best.partition
+```
+
+## Küme dağılımını ve elemanları figure olarak görmek için
+
+```{r}
+data_mam_df <- as.data.frame(data_mam) %>% rownames_to_column()
+cluster_pos <- as.data.frame(final$cluster) %>% rownames_to_column()
+colnames(cluster_pos) <- c("rowname", "cluster")
+data_mam_final <- inner_join(cluster_pos, data_mam_df)
+ggRadar(data_mam_final[-1], aes(group = cluster), rescale = FALSE, legend.position = "none", size = 1, interactive = FALSE, use.label = TRUE) + facet_wrap(~cluster) + scale_y_discrete(breaks = NULL) + # don't show ticks
+theme(axis.text.x = element_text(size = 10)) + scale_fill_manual(values = rep("#1c6193", nrow(data_mam_final))) +
+scale_color_manual(values = rep("#1c6193", nrow(data_mam_final))) +
+ggtitle("Brand Reputation Attributes")
+
+```
+
+```{r}
+data_mam_df <- as.data.frame(data_mam)
+data_mam_df$cluster <- final$cluster
+data_mam_df$cluster <- as.character(data_mam_df$cluster)
+ggpairs(data_mam_df, 1:3, mapping = ggplot2::aes(color = cluster, alpha = 0.5), 
+        diag = list(continuous = wrap("densityDiag")), 
+        lower=list(continuous = wrap("points", alpha=0.9)))
+
+```
+
+```{r}
+# plot specific graphs from previous matrix with scatterplot
+g <- ggplot(data_mam_df, aes(x = MI1, y = MI2, color = cluster)) +
+        geom_point() +
+        theme(legend.position = "bottom")
+ggExtra::ggMarginal(g, type = "histogram", bins = 20, color = "grey", fill = "blue")
+b <- ggplot(data_mam_df, aes(x = MI2, y = MI3, color = cluster)) +
+        geom_point() +
+        theme(legend.position = "bottom")
+ggExtra::ggMarginal(b, type = "histogram", bins = 20, color = "grey", fill = "blue")
+
+```
+
+Kümelerin değişken değerlerine bakalım
+
+```{r}
+ggplot(data_mam_df, aes(x = cluster, y = MI1)) + 
+        geom_boxplot(aes(fill = cluster))
+ggplot(data_mam_df, aes(x = cluster, y = MI2)) + 
+        geom_boxplot(aes(fill = cluster))
+ggplot(data_mam_df, aes(x = cluster, y = MI3)) + 
+        geom_boxplot(aes(fill = cluster))
+ggplot(data_mam_df, aes(x = cluster, y = MI4)) + 
+        geom_boxplot(aes(fill = cluster))
+
+```
+
+Birinci kümeyi MI1 yüksek, ikinci kümede düşük, 3 te ise orta olarak görülüyor.
+
+```{r}
+
+# Parallel coordiante plots allow us to put each feature on seperate column and lines connecting each column
+ggparcoord(data = data_mam_df, columns = 1:5, groupColumn = 6, alphaLines = 0.4, title = "Parallel Coordinate Plot for Brand Reputation", scale = "globalminmax", showPoints = TRUE) + theme(legend.position = "bottom")
+```
+
+## Feature Importance
+
+```{r}
+library(Boruta)
+library(mlbench)
+library(caret)
+library(randomForest)
+```
+
+Loading File
+
+```{r}
+data_impor<-read.xlsx(xlsxFile = file.choose(),colNames = TRUE,rowNames=FALSE)
+data_impor$Class<-as.factor(data_impor$Class)
+boruta <- Boruta(Class ~ ., data = data_impor, doTrace = 2, maxRuns = 500)
+print(boruta)
+plot(boruta, las = 2, cex.axis = 0.7)
+```
+
+## Ortaya Çıkan Kümeler İle ilgili bilgiler (Ortalama) gibi
+
+```{r}
+ortalama<-transfer
+
+ortalama<-as_tibble(ortalama)
+# 1. Yol
+# Aşağıdaki kod istenilen sütunları numeric yapıyor ancakdata frame'in labellerini yok ediyor.
+ortalama[,1:5]<- as.data.frame(apply(ortalama[,1:5], 2, as.numeric)) 
+ortalama<-ortalama %>% rowwise() %>%mutate(ort=mean(c(PF1,PF2,PF3,PF4)))
+# 2. Yol
+# Eğer numeric dönüşüm veya özel sütunları seçmek gerekirse
+# ortalama <- lapply(ortalama[1:5],as.numeric)
+#ortalama<-ortalama%>% rowwise() %>% mutate(ort=mean(c(PF1,PF2,PF3,PF4)))
+ortalama<-ortalama%>%mutate(ort=rowMeans(ortalama[,-5]))
+
+summary(ortalama %>% select(Cluster,ort) %>% filter(Cluster=="1"))
+summary(ortalama %>% select(Cluster,ort) %>% filter(Cluster=="2"))
+
+
+
+```
+
+## Sınıf İstatistikleri
+
+```{r,results = 'asis'}
+data_impor<-read.xlsx(xlsxFile = file.choose(),colNames = TRUE,rowNames=FALSE)
+data_impor$Class<-as.factor(data_impor$Class)
+
+view(dfSummary(data_impor,style = "grid",method="render",plain.ascii = FALSE, varnumbers = FALSE, valid.col = FALSE))
+
+```
